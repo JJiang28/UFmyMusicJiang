@@ -29,7 +29,7 @@ typedef struct {
     char files[100][256];
 } ListResponse;
 
-// Diff response includes list of client files
+// Diff request includes list of client files
 typedef struct {
     Header header;
     uint32_t fileCount;
