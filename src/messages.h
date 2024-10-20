@@ -1,72 +1,73 @@
 #pragma once
 
-#include <stdint.h>
-#include <bits/stdc++.h>
+#include <cstdint>
+#include <string>
+#include <vector>
+using namespace std;
 
 // Message Types
-typedef enum {
+enum class Type {
     LIST,
     DIFF,
     PULL,
     LEAVE
-} Type;
+};
 
 // Header format: Type, size
-typedef struct {
+struct Header {
     Type type;
     uint32_t size;
-} Header;
+};
 
 // List request has no params
-typedef struct {
+struct ListRequest {
     Header header;
-} ListRequest;
+};
 
 // List response should include a list of all song names
-typedef struct {
+struct ListResponse {
     Header header;
     uint32_t fileCount;
-    char files[100][256];
-} ListResponse;
+    vector<string> files;  
+};
 
 // Diff request includes list of client files
-typedef struct {
+struct DiffRequest {
     Header header;
     uint32_t fileCount;
-    char clientFiles[100][256];
-} DiffRequest;
+    vector<string> clientFiles;  
+};
 
-// Diff response includes list of files client does NOT have
-typedef struct {
+// Diff response includes list of files the client does NOT have
+struct DiffResponse {
     Header header;
     uint32_t diffCount;
-    char diffFiles[100][256];
-} DiffResponse;
+    vector<string> diffFiles;  
+};
 
 // Pull request
-typedef struct {
+struct PullRequest {
     Header header;
     uint32_t fileCount;
-    char files[100][256];
-} PullRequest;
+    vector<string> files;
+};
 
 // Each pull response sends a chunk of a requested file
-typedef struct {
+struct PullResponse {
     Header header;
     char fileName[256];
     uint32_t fileSize;
     char data[1024];
     uint32_t seqNumber;
-} PullResponse;
+};
 
 // Leave request has no params
-typedef struct {
+struct LeaveRequest {
     Header header;
-} LeaveRequest;
+};
 
 // Leave response has a status code: True = ok, False = something wrong
-typedef struct {
+struct LeaveResponse {
     Header header;
     bool status;
-} LeaveResponse;
-
+};
