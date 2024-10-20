@@ -5,10 +5,12 @@
 #include <arpa/inet.h>
 #include "messages.h"
 
+using namespace std;
+
 #define MAX_BUFFER 4096
 #define PORT 8080
 
-char** list_request(int clientSock, int* ) {
+vector<string> list_request(int clientSock) {
     Header header;
     header.type = LIST;
     header.size = 0;
@@ -25,10 +27,9 @@ char** list_request(int clientSock, int* ) {
     ListResponse resp;
     int msglen = recv(clientSock, &resp, sizeof(resp), 0);
 
-    char **songs = (char **)malloc(list_response.num_files * sizeof(char *));
-
+    vector<string> songs;
     for (uint32_t i = 0; i < resp.fileCount; i++) {
-        songs[i] = strdup(resp.files[i]);
+        songs.push_back(resp.files[i]);
     }
 
     return songs;
@@ -100,11 +101,31 @@ int main() {
     }
 
     while (1) {
-        char command[MAX_BUFFER];
-        printf("Enter command (LIST, DIFF, PULL, LEAVE): ");
-        if (fgets(command, MAX_BUFFER, stdin) == NULL) {
-            printf("Error reading command.\n");
+        string input;
+        printf("Enter command (LIST, DIFF, PULL, LEAVE): \n");
+        cin >> input;
+        switch (input)
+        {
+        case "LIST":
+            vector<string> songs = list_request(client_socket);
+            for (string iter : songs) {
+                printf("%s\n", iter);
+            }
             break;
+        
+        case "DIFF":
+            break;
+
+        case "PULL":
+            break;
+        
+        case "LEAVE":
+            leave_request(client_socket);
+            close(client_socket);
+            printf("Connection closed.");
+            return 0;
+        default:
+            printf("Invalid input!");
         }
         command[strcspn(command, "\n")] = '\0';  // Remove newline character
     }
