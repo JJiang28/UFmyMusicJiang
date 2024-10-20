@@ -6,68 +6,68 @@
 using namespace std;
 
 // Message Types
-enum class Type {
+typedef enum class Type {
     LIST,
     DIFF,
     PULL,
     LEAVE
-};
+} Type;
 
 // Header format: Type, size
-struct Header {
+typedef struct {
     Type type;
     uint32_t size;
-};
+} Header;
 
 // List request has no params
-struct ListRequest {
+typedef struct {
     Header header;
-};
+} ListRequest;
 
 // List response should include a list of all song names
-struct ListResponse {
-    Header header;
-    uint32_t fileCount;
-    vector<string> files;  
-};
-
-// Diff request includes list of client files
-struct DiffRequest {
-    Header header;
-    uint32_t fileCount;
-    vector<string> clientFiles;  
-};
-
-// Diff response includes list of files the client does NOT have
-struct DiffResponse {
-    Header header;
-    uint32_t diffCount;
-    vector<string> diffFiles;  
-};
-
-// Pull request
-struct PullRequest {
+typedef struct {
     Header header;
     uint32_t fileCount;
     vector<string> files;
-};
+} ListResponse;
+
+// Diff request includes list of client files
+typedef struct {
+    Header header;
+    uint32_t fileCount;
+    vector<string> clientFiles;
+} DiffRequest;
+
+// Diff response includes list of files the client does NOT have
+typedef struct {
+    Header header;
+    uint32_t diffCount;
+    vector<string> diffFiles;
+} DiffResponse;
+
+// Pull request
+typedef struct {
+    Header header;
+    uint32_t fileCount;
+    vector<string> files;
+} PullRequest;
 
 // Each pull response sends a chunk of a requested file
-struct PullResponse {
+typedef struct {
     Header header;
     char fileName[256];
     uint32_t fileSize;
     char data[1024];
     uint32_t seqNumber;
-};
+} PullResponse;
 
 // Leave request has no params
-struct LeaveRequest {
+typedef struct {
     Header header;
-};
+} LeaveRequest;
 
 // Leave response has a status code: True = ok, False = something wrong
-struct LeaveResponse {
+typedef struct {
     Header header;
     bool status;
-};
+} LeaveResponse;
