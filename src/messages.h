@@ -28,28 +28,28 @@ struct ListRequest {
 struct ListResponse {
     Header header;
     uint32_t fileCount;
-    vector<std::string> files;  
+    vector<string> files;  
 };
 
 // Diff request includes list of client files
 struct DiffRequest {
     Header header;
     uint32_t fileCount;
-    vector<std::string> clientFiles;  
+    vector<string> clientFiles;  
 };
 
 // Diff response includes list of files the client does NOT have
 struct DiffResponse {
     Header header;
     uint32_t diffCount;
-    vector<std::string> diffFiles;  
+    vector<string> diffFiles;  
 };
 
 // Pull request
 struct PullRequest {
     Header header;
     uint32_t fileCount;
-    vector<std::string> files;
+    vector<string> files;
 };
 
 // Each pull response sends a chunk of a requested file
