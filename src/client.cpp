@@ -260,11 +260,20 @@ void pull_request(int clientSock) {
 
     cout << files_expected << endl;
     for (uint32_t i = 0; i < files_expected; i++) {
-        string filename;
-        if (recv(clientSock, &filename, sizeof(filename), 0) <= 0) {
-            perror("Failed to receive expected filename");
+        uint32_t recvLen;
+        if (recv(clientSock, &recvLen, sizeof(recvLen), 0) <= 0) {
+            perror("Failed to receive combined string length");
             return;
         }
+
+        char buffer[recvLen + 1];
+        if (recv(clientSock, buffer, recvLen, 0) <= 0) {
+            perror("Failed to receive combined string");
+            return;
+        }
+        buffer[recvLen] = '\0';
+        string filename(buffer);
+
         cout << filename << endl;
     }
 
