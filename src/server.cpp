@@ -5,11 +5,41 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <unordered_map>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <openssl/sha.h>
 #include "messages.h"
 using namespace std;
 
 #define MAX_BUFFER 4096
 #define PORT 8080
+
+string hash_file (const string& path) {
+    ifstream file("server_files/"+path, ios::binary);
+    if (!file) {
+        perror("Could not open file!");
+        return "";
+    }
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+
+    char buffer[4096];
+    while (file.good()) {
+        file.read(buffer, sizeof(buffer));
+        SHA256_Update(&sha256, buffer, file.gcount());
+    }
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_Final(hash, &sha256);
+
+    stringstream hex_hash;
+    hex_hash << hex << setfill('0');
+    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        hex_hash << hex << setw(2) << (int)hash[i];
+    }
+    return hex_hash.str();
+}
 
 void list_songs(int client_socket) {
     ListResponse response;
@@ -62,6 +92,11 @@ void diff_songs(int client_sock) {
     DiffResponse resp;
     resp.header.type = DIFF;
     resp.diffCount = 0;
+
+    // if (recv(clientSock, &resp.header, sizeof(resp.header), 0) <= 0) {
+    //     perror("Failed to receive header");
+    //     return {};
+    // }
     
     uint32_t combinedLength;
     if (recv(client_sock, &combinedLength, sizeof(combinedLength), 0) <= 0) {
@@ -71,6 +106,7 @@ void diff_songs(int client_sock) {
 
     char buffer[combinedLength + 1];
     if (recv(client_sock, buffer, combinedLength, 0) <= 0) {
+        cout << "error in receiving the concat string in server" << endl;
         perror("Failed to receive combined string");
         return;
     }
@@ -99,6 +135,62 @@ void diff_songs(int client_sock) {
         combinedHashes.erase(0, pos + 1);
     }
 
+    if (songs.size() != hashes.size()) {
+        perror("Mismatch between number of songs and hashes");
+        return;
+    }
+
+    unordered_map<string, string> songContents;
+    unordered_map<string, int> songCount;
+    for(int i = 0; i < songs.size(); i++) {
+        songContents[songs[i]] = hashes[i];
+        songCount[songs[i]] += 1;
+    }
+
+    DIR *dir = opendir("server_files");
+    if (dir == NULL) {
+        perror("Could not open directory");
+        return;
+    }
+
+    string combinedDiffFiles;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_REG) {
+            // Add each filename to the combined string with a delimiter
+            string fileName = string(entry->d_name);
+            string hashes = hash_file(fileName);
+            if(songContents.find(fileName) != songContents.end()) {
+                if(songContents[fileName] == hashes) {
+                    continue;
+                }
+                else {
+                    combinedDiffFiles += fileName + "\n";
+                }
+            }
+            else {
+                cout << "runs here man" << endl;
+                combinedDiffFiles += fileName + "\n";
+            }
+        }
+    }
+    closedir(dir);
+
+    // if (send(client_sock, &resp.header, sizeof(resp.header), 0) < 0) {
+    //     perror("Failed to send header");
+    //     return;
+    // }
+
+    uint32_t combinedLengthS = combinedDiffFiles.size();
+    if (send(client_sock, &combinedLengthS, sizeof(combinedLengthS), 0) < 0) {
+        perror("Failed to send combined string length");
+        return;
+    }
+
+    if (send(client_sock, combinedDiffFiles.c_str(), combinedLengthS, 0) < 0) {
+        perror("Failed to send combined string");
+        return;
+    }
 }
 
 void *handle_client(void *client_socket) {
@@ -114,6 +206,7 @@ void *handle_client(void *client_socket) {
                 list_songs(sock);  // Handle LIST request
                 break;
             case DIFF:
+                cout << "runs here" << endl;
                 diff_songs(sock);  // Handle DIFF request (to be implemented)
                 break;
             case LEAVE:

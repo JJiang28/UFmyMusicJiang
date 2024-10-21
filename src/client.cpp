@@ -98,8 +98,6 @@ vector<string> list_request(int clientSock) {
     return songs;
 }
 
-
-
 vector<string> diff_request(int clientSock) {
     Header header;
     header.type = DIFF;
@@ -163,12 +161,13 @@ vector<string> diff_request(int clientSock) {
         return {};
     }
 
-    char buffer[combinedLength + 1];
-    if (recv(clientSock, buffer, combinedLength, 0) <= 0) {
+    char buffer[recvLen + 1];
+    if (recv(clientSock, buffer, recvLen, 0) <= 0) {
+        cout << "error is on client side" << endl;
         perror("Failed to receive combined string");
         return {};
     }
-    buffer[combinedLength] = '\0';
+    buffer[recvLen] = '\0';
 
     vector<string> songs;
     string cfiles(buffer);
@@ -237,6 +236,29 @@ void pull_request(int clientSock) {
         perror("Failed to send combined hashes");
         return;
     }
+
+    DiffResponse diffResp;
+    if (recv(clientSock, &diffResp.header, sizeof(diffResp.header), 0) <= 0) {
+        perror("Failed to receive diff header");
+        return;
+    }
+
+    // Receive the list of different files
+    uint32_t diffLength;
+    if (recv(clientSock, &diffLength, sizeof(diffLength), 0) <= 0) {
+        perror("Failed to receive diff string length");
+        return;
+    }
+
+    char diffBuffer[diffLength + 1];
+    if (recv(clientSock, diffBuffer, diffLength, 0) <= 0) {
+        perror("Failed to receive diff string");
+        return;
+    }
+    diffBuffer[diffLength] = '\0';
+
+    // Print the list of files that are different
+    printf("Different files:\n%s", diffBuffer);
 }
 
 void leave_request(int clientSock) {
