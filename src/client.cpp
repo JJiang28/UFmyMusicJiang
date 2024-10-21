@@ -171,11 +171,11 @@ vector<string> diff_request(int clientSock) {
     buffer[combinedLength] = '\0';
 
     vector<string> songs;
-    string combinedFiles(buffer);
+    string cfiles(buffer);
     size_t pos = 0;
-    while ((pos = combinedFiles.find("\n")) != string::npos) {
-        songs.push_back(combinedFiles.substr(0, pos));
-        combinedFiles.erase(0, pos + 1);
+    while ((pos = cfiles.find("\n")) != string::npos) {
+        songs.push_back(cfiles.substr(0, pos));
+        cfiles.erase(0, pos + 1);
     }
 
     return songs;
@@ -194,7 +194,7 @@ void pull_request(int clientSock) {
 
     if (send(clientSock, &req, sizeof(req), 0) < 0) {
         perror("Could not send PULL request!");
-        return {};
+        return;
     }
 
     // crawl local directory
