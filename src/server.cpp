@@ -126,7 +126,7 @@ void diff_songs(int client_sock) {
     }
 
     char bufferHash[combinedLengthHashes + 1];
-        if (recv(client_sock, bufferHash, combinedLengthHashes, 0) <= 0) {
+    if (recv(client_sock, bufferHash, combinedLengthHashes, 0) <= 0) {
         perror("Failed to receive combined string");
         return;
     }
@@ -205,6 +205,163 @@ void diff_songs(int client_sock) {
     }
 }
 
+void send_file(int client_socket, const string& filepath) {
+    ifstream file(filepath, ios::binary);
+    if (!file.is_open()) {
+        perror("Could not open file!");
+    }
+
+    if (send(client_socket, filepath.c_str(), filepath.size()+1, 0) < 0) {
+        perror("Could not send file name");
+        file.close();
+        return;
+    }
+
+    // Get file size
+    streamsize file_size = file.tellg();
+    file.seekg(0, ios::beg);
+    
+    if (send(client_socket, &file_size, sizeof(file_size), 0) < 0) {
+        perror("Could not send file size");
+        file.close();
+        return;
+    }
+
+    // 8 kB packet size
+    char buffer[8192];
+    while (file.good()) {
+        file.read(buffer, sizeof(buffer));
+        streamsize bytes_read = file.gcount();
+
+        if (send(client_socket, buffer, bytes_read, 0) < 0) {
+            perror("Error: Sending file failed");
+            break;
+        }
+    }
+    file.close();
+
+}
+
+void pull_songs(int client_sock) {
+    // Receive header
+    DiffResponse resp;
+    resp.header.type = PULL;
+    resp.diffCount = 0;
+
+    // if (recv(clientSock, &resp.header, sizeof(resp.header), 0) <= 0) {
+    //     perror("Failed to receive header");
+    //     return {};
+    // }
+    
+    uint32_t combinedLength;
+    if (recv(client_sock, &combinedLength, sizeof(combinedLength), 0) <= 0) {
+        perror("Failed to receive combined string length");
+        return;
+    }
+
+    char buffer[combinedLength + 1];
+    if (recv(client_sock, buffer, combinedLength, 0) <= 0) {
+        cout << "error in receiving the concat string in server" << endl;
+        perror("Failed to receive combined string");
+        return;
+    }
+    buffer[combinedLength] = '\0';
+
+    uint32_t combinedLengthHashes;
+    if (recv(client_sock, &combinedLengthHashes, sizeof(combinedLengthHashes), 0) <= 0) {
+        perror("Failed to receive combined string length");
+        return;
+    }
+
+    char bufferHash[combinedLengthHashes + 1];
+    if (recv(client_sock, bufferHash, combinedLengthHashes, 0) <= 0) {
+        perror("Failed to receive combined string");
+        return;
+    }
+
+    vector<string> songs;
+    string combinedFiles(buffer);
+    size_t pos = 0;
+    while ((pos = combinedFiles.find("\n")) != string::npos) {
+        songs.push_back(combinedFiles.substr(0, pos));
+        combinedFiles.erase(0, pos + 1);
+    }
+
+    vector<string> hashes;
+    string combinedHashes(bufferHash);
+    pos = 0;
+    while ((pos = combinedHashes.find("\n")) != string::npos) {
+        hashes.push_back(combinedHashes.substr(0, pos));
+        combinedHashes.erase(0, pos + 1);
+    }
+
+    if (songs.size() != hashes.size()) {
+        perror("Mismatch between number of songs and hashes");
+        return;
+    }
+
+    unordered_map<string, string> songContents;
+    unordered_map<string, int> songCount;
+    for(int i = 0; i < songs.size(); i++) {
+        songContents[songs[i]] = hashes[i];
+        songCount[songs[i]] += 1;
+    }
+
+    DIR *dir = opendir("server_files");
+    if (dir == NULL) {
+        perror("Could not open directory");
+        return;
+    }
+
+    cout << "me when i serve" << endl;
+
+    if (send(client_sock, &resp.header, sizeof(&resp.header), 0) < 0) {
+        perror("Error: Sending file failed");
+        return;
+    }
+
+    cout << "server sent response header" << endl;
+
+    // crawl server directory
+    vector<string> files_to_send;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_REG) {
+            string fileName = string(entry->d_name);
+            string hashes = hash_file(fileName);
+
+            // if filename is found 
+            if(songContents.find(fileName) != songContents.end()) {
+                // but contents match
+                if(songContents[fileName] == hashes) {
+                    continue;
+                }
+                else {
+                    send_file(client_sock, fileName);
+                    files_to_send.push_back(fileName);
+                }
+            }
+            // no file found, send to client
+            else {
+                cout << "runs here man" << endl;
+                files_to_send.push_back(fileName);
+            }
+        }
+    }
+    closedir(dir);
+
+    // send client number of files to expect
+    uint32_t numfiles = files_to_send.size();
+    if (send(client_sock, &numfiles, sizeof(numfiles), 0) < 0) {
+        perror("Failed to send number of files");
+        return;
+    }
+
+    for (uint32_t i = 0; i < numfiles; i++) {
+        send_file(client_sock, files_to_send[i]);
+    }
+}
+
 void *handle_client(void *client_socket) {
     int sock = *((int *)client_socket);
     free(client_socket); 
@@ -220,6 +377,9 @@ void *handle_client(void *client_socket) {
             case DIFF:
                 cout << "runs here" << endl;
                 diff_songs(sock);  // Handle DIFF request (to be implemented)
+                break;
+            case PULL:
+                pull_songs(sock);
                 break;
             case LEAVE:
                 close(sock);

@@ -191,6 +191,7 @@ void pull_request(int clientSock) {
 
     DiffRequest req;
     req.header = header;
+    req.fileCount = 0;
 
     string combinedFiles;
     string hashes;
@@ -241,28 +242,34 @@ void pull_request(int clientSock) {
         return;
     }
 
-    DiffResponse diffResp;
-    if (recv(clientSock, &diffResp.header, sizeof(diffResp.header), 0) <= 0) {
+    cout << "guys i sent it" << endl;
+
+    PullResponse resp;
+    if (recv(clientSock, &resp.header, sizeof(resp.header), 0) <= 0) {
         perror("Failed to receive diff header");
         return;
     }
 
-    // Receive the list of different files
-    uint32_t diffLength;
-    if (recv(clientSock, &diffLength, sizeof(diffLength), 0) <= 0) {
-        perror("Failed to receive diff string length");
+    cout << "got the header back" << endl;
+
+    uint32_t files_expected;
+    if (recv(clientSock, &files_expected, sizeof(files_expected), 0) <= 0) {
+        perror("Failed to receive expected file count");
         return;
     }
 
-    char diffBuffer[diffLength + 1];
-    if (recv(clientSock, diffBuffer, diffLength, 0) <= 0) {
-        perror("Failed to receive diff string");
-        return;
+    cout << files_expected << endl;
+    for (uint32_t i = 0; i < files_expected; i++) {
+        string filename;
+        if (recv(clientSock, &filename, sizeof(filename), 0) <= 0) {
+            perror("Failed to receive expected filename");
+            return;
+        }
+        cout << filename << endl;
     }
-    diffBuffer[diffLength] = '\0';
 
     // Print the list of files that are different
-    printf("Different files:\n%s", diffBuffer);
+    //printf("Different files:\n%s", diffBuffer);
 }
 
 void leave_request(int clientSock) {
@@ -324,7 +331,7 @@ int main() {
             }
         }
         else if (input == "PULL") {
-            // Add code to handle PULL request
+            pull_request(client_socket);
         }
         else if (input == "LEAVE") {
             leave_request(client_socket);
