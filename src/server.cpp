@@ -55,7 +55,7 @@ void list_songs(int client_socket) {
     }
 }
 
-void diff_songs() {
+void diff_songs(int client_socket) {
     ListResponse response;
     response.header.type = LIST;
 }
@@ -73,7 +73,7 @@ void *handle_client(void *client_socket) {
                 list_songs(sock);  // Handle LIST request
                 break;
             case DIFF:
-                diff_songs();  // Handle DIFF request (to be implemented)
+                diff_songs(sock);  // Handle DIFF request (to be implemented)
                 break;
             case LEAVE:
                 close(sock);

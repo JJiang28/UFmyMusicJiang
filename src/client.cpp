@@ -1,10 +1,15 @@
 #include <iostream>
+#include <iomanip>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
+#include <dirent.h>
+#include <fstream>
+#include <sstream>
+#include <openssl/sha.h>
 #include "messages.h"
+#include <arpa/inet.h>
 
 using namespace std;
 
@@ -21,13 +26,41 @@ string recv_string(int socket) {
     return string(buffer);
 }
 
+string hash_file (const string& path) {
+    ifstream file("client_files/"+path, ios::binary);
+    if (!file) {
+        perror("Could not open file!");
+        return "";
+    }
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+
+    char buffer[4096];
+    while (file.good()) {
+        file.read(buffer, sizeof(buffer));
+        SHA256_Update(&sha256, buffer, file.gcount());
+    }
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_Final(hash, &sha256);
+
+    stringstream hex_hash;
+    hex_hash << hex << setfill('0');
+    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        hex_hash << hex << setw(2) << (int)hash[i];
+    }
+    return hex_hash.str();
+}
+
 vector<string> list_request(int clientSock) {
     Header header;
     header.type = LIST;
     header.size = 0;
 
+    ListRequest req;
+    req.header = header;
+
     // Send LIST request
-    if (send(clientSock, &header, sizeof(header), 0) < 0) {
+    if (send(clientSock, &req, sizeof(req), 0) < 0) {
         perror("Could not send LIST request!");
         return {};
     }
@@ -72,12 +105,46 @@ void diff_request(int clientSock) {
     header.type = DIFF;
     header.size = 0;
 
-    ListRequest req;
+    DiffRequest req;
     req.header = header;
 
-    // send DIFF request
-    if (send(clientSock, &req, sizeof(req), 0) < 0) {
-        perror("Could not send DIFF request!");
+    string combinedFiles;
+    string hashes;
+
+    // crawl local directory
+    DIR *dir = opendir("client_files");
+    if (dir == NULL) {
+        perror("Could not open directory");
+        return;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL && req.fileCount < 100) {
+        if (entry->d_type == DT_REG) {
+            string fileName = string(entry->d_name);
+            combinedFiles += fileName + "\n";
+            hashes += hash_file(fileName) + "\n";
+            req.fileCount++;
+        }
+    }
+    closedir(dir);
+
+    uint32_t combinedLength = combinedFiles.size();
+    printf("Your files: \n%s", combinedFiles.c_str());
+    printf("Their hashes: \n%s", hashes.c_str());
+
+    // Send buffer length and files to server
+    if (send(clientSock, &combinedLength, sizeof(combinedLength), 0) < 0) {
+        perror("Failed to send combined string length");
+        return;
+    }
+    if (send(clientSock, combinedFiles.c_str(), combinedLength, 0) < 0) {
+        perror("Failed to send combined string");
+        return;
+    }
+    if (send(clientSock, hashes.c_str(), combinedLength, 0) < 0) {
+        perror("Failed to send combined hashes");
+        return;
     }
 }
 
@@ -92,7 +159,7 @@ void leave_request(int clientSock) {
     if (send(clientSock, &req, sizeof(req), 0) < 0) {
         perror("Could not send LEAVE request!");
     }
-    printf("Sent LEAVE request.");
+    printf("Sent LEAVE request.\n");
 }
 
 int main() {
