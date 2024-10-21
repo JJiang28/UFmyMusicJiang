@@ -42,6 +42,7 @@ string hash_file (const string& path) {
 }
 
 void list_songs(int client_socket) {
+    cout << "runs list songs first" << endl;
     ListResponse response;
     response.header.type = LIST;
     response.fileCount = 0;
@@ -60,10 +61,11 @@ void list_songs(int client_socket) {
         if (entry->d_type == DT_REG) {
             // Add each filename to the combined string with a delimiter
             string fileName = string(entry->d_name);
-            cout << fileName << endl;
+            //cout << fileName << endl;
             combinedFiles += string(entry->d_name) + "\n";
             response.fileCount++;
         }
+        // cout << "riuns jerherw " << endl;
     }
     closedir(dir);
 
@@ -88,6 +90,7 @@ void list_songs(int client_socket) {
 }
 
 void diff_songs(int client_sock) {
+    cout << "runs diff songs first" << endl;
     // Receive header
     DiffResponse resp;
     resp.header.type = DIFF;
@@ -99,10 +102,13 @@ void diff_songs(int client_sock) {
     // }
     
     uint32_t combinedLength;
+    
     if (recv(client_sock, &combinedLength, sizeof(combinedLength), 0) <= 0) {
         perror("Failed to receive combined string length");
         return;
     }
+
+    //cout << "server: " << combinedLength << endl;
 
     char buffer[combinedLength + 1];
     if (recv(client_sock, buffer, combinedLength, 0) <= 0) {
@@ -110,6 +116,7 @@ void diff_songs(int client_sock) {
         perror("Failed to receive combined string");
         return;
     }
+    //cout << "runs past here" << endl;
     buffer[combinedLength] = '\0';
 
     uint32_t combinedLengthHashes;
@@ -117,7 +124,12 @@ void diff_songs(int client_sock) {
         perror("Failed to receive combined string length");
         return;
     }
+
     char bufferHash[combinedLengthHashes + 1];
+        if (recv(client_sock, bufferHash, combinedLengthHashes, 0) <= 0) {
+        perror("Failed to receive combined string");
+        return;
+    }
 
     vector<string> songs;
     string combinedFiles(buffer);
@@ -169,7 +181,7 @@ void diff_songs(int client_sock) {
                 }
             }
             else {
-                cout << "runs here man" << endl;
+                //cout << "runs here man" << endl;
                 combinedDiffFiles += fileName + "\n";
             }
         }

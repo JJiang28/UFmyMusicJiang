@@ -105,6 +105,7 @@ vector<string> diff_request(int clientSock) {
 
     DiffRequest req;
     req.header = header;
+    req.fileCount = 0;
 
     string combinedFiles;
     string hashes;
@@ -125,9 +126,11 @@ vector<string> diff_request(int clientSock) {
     while ((entry = readdir(dir)) != NULL && req.fileCount < 100) {
         if (entry->d_type == DT_REG) {
             string fileName = string(entry->d_name);
+            //cout << "fileName: " << fileName << endl;
             combinedFiles += fileName + "\n";
             hashes += hash_file(fileName) + "\n";
             req.fileCount++;
+            //cout << "this is runnig here" << endl;
         }
     }
     closedir(dir);
@@ -137,6 +140,7 @@ vector<string> diff_request(int clientSock) {
     printf("Your files: \n%s", combinedFiles.c_str());
     printf("Their hashes: \n%s", hashes.c_str());
 
+//    cout << "client: " << combinedLength << endl;
     // Send buffer length and files to server
     if (send(clientSock, &combinedLength, sizeof(combinedLength), 0) < 0) {
         perror("Failed to send combined string length");
