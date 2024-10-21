@@ -100,7 +100,7 @@ vector<string> list_request(int clientSock) {
 
 
 
-void diff_request(int clientSock) {
+vector<string> diff_request(int clientSock) {
     Header header;
     header.type = DIFF;
     header.size = 0;
@@ -110,6 +110,92 @@ void diff_request(int clientSock) {
 
     string combinedFiles;
     string hashes;
+
+    if (send(clientSock, &req, sizeof(req), 0) < 0) {
+        perror("Could not send DIFF request!");
+        return {};
+    }
+
+    // crawl local directory
+    DIR *dir = opendir("client_files");
+    if (dir == NULL) {
+        perror("Could not open directory");
+        return {};
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL && req.fileCount < 100) {
+        if (entry->d_type == DT_REG) {
+            string fileName = string(entry->d_name);
+            combinedFiles += fileName + "\n";
+            hashes += hash_file(fileName) + "\n";
+            req.fileCount++;
+        }
+    }
+    closedir(dir);
+
+    uint32_t combinedLength = combinedFiles.size();
+    uint32_t combinedLengthHashes = hashes.size();
+    printf("Your files: \n%s", combinedFiles.c_str());
+    printf("Their hashes: \n%s", hashes.c_str());
+
+    // Send buffer length and files to server
+    if (send(clientSock, &combinedLength, sizeof(combinedLength), 0) < 0) {
+        perror("Failed to send combined string length");
+        return {};
+    }
+    if (send(clientSock, combinedFiles.c_str(), combinedLength, 0) < 0) {
+        perror("Failed to send combined string");
+        return {};
+    }
+    if (send(clientSock, &combinedLengthHashes, sizeof(combinedLengthHashes), 0) < 0) {
+        perror("Failed to send combined hashes length");
+        return {};
+    }
+    if (send(clientSock, hashes.c_str(), combinedLengthHashes, 0) < 0) {
+        perror("Failed to send combined hashes");
+        return {};
+    }
+
+    uint32_t recvLen;
+    if (recv(clientSock, &recvLen, sizeof(recvLen), 0) <= 0) {
+        perror("Failed to receive combined string length");
+        return {};
+    }
+
+    char buffer[combinedLength + 1];
+    if (recv(clientSock, buffer, combinedLength, 0) <= 0) {
+        perror("Failed to receive combined string");
+        return {};
+    }
+    buffer[combinedLength] = '\0';
+
+    vector<string> songs;
+    string combinedFiles(buffer);
+    size_t pos = 0;
+    while ((pos = combinedFiles.find("\n")) != string::npos) {
+        songs.push_back(combinedFiles.substr(0, pos));
+        combinedFiles.erase(0, pos + 1);
+    }
+
+    return songs;
+}
+
+void pull_request(int clientSock) {
+    Header header;
+    header.type = PULL;
+    header.size = 0;
+
+    DiffRequest req;
+    req.header = header;
+
+    string combinedFiles;
+    string hashes;
+
+    if (send(clientSock, &req, sizeof(req), 0) < 0) {
+        perror("Could not send PULL request!");
+        return {};
+    }
 
     // crawl local directory
     DIR *dir = opendir("client_files");
@@ -130,7 +216,7 @@ void diff_request(int clientSock) {
     closedir(dir);
 
     uint32_t combinedLength = combinedFiles.size();
-    uint32_t = combinedLengthHashes = hashes.size();
+    uint32_t combinedLengthHashes = hashes.size();
     printf("Your files: \n%s", combinedFiles.c_str());
     printf("Their hashes: \n%s", hashes.c_str());
 
@@ -206,8 +292,10 @@ int main() {
             }
         }
         else if (input == "DIFF") {
-            diff_request(client_socket);
-            // Add code to handle DIFF request response
+            songs = diff_request(client_socket);
+            for (const string &song : songs) {
+                printf("%s\n", song.c_str());
+            }
         }
         else if (input == "PULL") {
             // Add code to handle PULL request
