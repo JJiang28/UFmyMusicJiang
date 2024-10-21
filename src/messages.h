@@ -6,7 +6,7 @@
 using namespace std;
 
 // Message Types
-typedef enum class Type {
+typedef enum {
     LIST,
     DIFF,
     PULL,
