@@ -130,6 +130,7 @@ void diff_request(int clientSock) {
     closedir(dir);
 
     uint32_t combinedLength = combinedFiles.size();
+    uint32_t = combinedLengthHashes = hashes.size();
     printf("Your files: \n%s", combinedFiles.c_str());
     printf("Their hashes: \n%s", hashes.c_str());
 
@@ -142,7 +143,11 @@ void diff_request(int clientSock) {
         perror("Failed to send combined string");
         return;
     }
-    if (send(clientSock, hashes.c_str(), combinedLength, 0) < 0) {
+    if (send(clientSock, &combinedLengthHashes, sizeof(combinedLengthHashes), 0) < 0) {
+        perror("Failed to send combined hashes length");
+        return;
+    }
+    if (send(clientSock, hashes.c_str(), combinedLengthHashes, 0) < 0) {
         perror("Failed to send combined hashes");
         return;
     }

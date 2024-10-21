@@ -29,6 +29,8 @@ void list_songs(int client_socket) {
     while ((entry = readdir(dir)) != NULL && response.fileCount < 100) {
         if (entry->d_type == DT_REG) {
             // Add each filename to the combined string with a delimiter
+            string fileName = string(entry->d_name);
+            cout << fileName << endl;
             combinedFiles += string(entry->d_name) + "\n";
             response.fileCount++;
         }
@@ -55,9 +57,48 @@ void list_songs(int client_socket) {
     }
 }
 
-void diff_songs(int client_socket) {
-    ListResponse response;
-    response.header.type = LIST;
+void diff_songs(int client_sock) {
+    // Receive header
+    DiffResponse resp;
+    resp.header.type = DIFF;
+    resp.diffCount = 0;
+    
+    uint32_t combinedLength;
+    if (recv(client_sock, &combinedLength, sizeof(combinedLength), 0) <= 0) {
+        perror("Failed to receive combined string length");
+        return;
+    }
+
+    char buffer[combinedLength + 1];
+    if (recv(client_sock, buffer, combinedLength, 0) <= 0) {
+        perror("Failed to receive combined string");
+        return;
+    }
+    buffer[combinedLength] = '\0';
+
+    uint32_t combinedLengthHashes;
+    if (recv(client_sock, &combinedLengthHashes, sizeof(combinedLengthHashes), 0) <= 0) {
+        perror("Failed to receive combined string length");
+        return;
+    }
+    char bufferHash[combinedLengthHashes + 1];
+
+    vector<string> songs;
+    string combinedFiles(buffer);
+    size_t pos = 0;
+    while ((pos = combinedFiles.find("\n")) != string::npos) {
+        songs.push_back(combinedFiles.substr(0, pos));
+        combinedFiles.erase(0, pos + 1);
+    }
+
+    vector<string> hashes;
+    string combinedHashes(bufferHash);
+    pos = 0;
+    while ((pos = combinedHashes.find("\n")) != string::npos) {
+        hashes.push_back(combinedHashes.substr(0, pos));
+        combinedHashes.erase(0, pos + 1);
+    }
+
 }
 
 void *handle_client(void *client_socket) {
