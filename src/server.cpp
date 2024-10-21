@@ -206,14 +206,19 @@ void diff_songs(int client_sock) {
 }
 
 void send_file(int client_socket, const string& filepath) {
-    ifstream file(filepath, ios::binary);
+    ifstream file("server_files/"+filepath, ios::binary);
     if (!file.is_open()) {
         perror("Could not open file!");
     }
 
-    if (send(client_socket, filepath.c_str(), filepath.size()+1, 0) < 0) {
-        perror("Could not send file name");
-        file.close();
+    uint32_t filepath_len = filepath.size();
+    if (send(client_socket, &filepath_len, sizeof(filepath_len), 0) < 0) {
+        perror("Failed to send combined string length");
+        return;
+    }
+
+    if (send(client_socket, filepath.c_str(), filepath_len, 0) < 0) {
+        perror("Failed to send combined string");
         return;
     }
 
@@ -337,7 +342,6 @@ void pull_songs(int client_sock) {
                     continue;
                 }
                 else {
-                    send_file(client_sock, fileName);
                     files_to_send.push_back(fileName);
                 }
             }
