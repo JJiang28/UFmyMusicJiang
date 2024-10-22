@@ -2,3 +2,5 @@ src/client_files/
 src/server_files/
 src/client
 src/server
+src/client_id.txt
+src/last_client_id.txt

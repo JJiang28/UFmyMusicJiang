@@ -13,15 +13,16 @@ This project implements a simple client-server application where clients can syn
     
 2.  **Create Directories**:
     
-    -   **Server Files Directory**: Create a directory named `server_files` in the project root. Populate this directory with the files you want the server to share.
-    -   **Client Files Directory**: Create a directory named `client_files` in the project root. Each client will use this directory to store synchronized files.
-    -   **Client History Directory**: The `client_history` directory will be created automatically by the `Makefile` to store client logs.
+    -   **Server Files Directory**: Create a directory named `server_files` in the same directory as your server executable. Populate this directory with the files you want the server to share.
+    -   **Client Files Directory**: Create a directory named `client_files` in the same directory as your client executable. The client will use this directory to store synchronized files.
 
 ## Compiling the Project
 
 Use the provided `Makefile` to compile both the client and server programs. This command will compile `client.cpp` and `server.cpp`, producing executables named `client` and `server`, respectively. It will also create the necessary directories if they don't exist.
 
 ## Executing
+
+Ensure the directories listed in Setup are set up before running executables. 
 
 To start the server, run: ./server
 
