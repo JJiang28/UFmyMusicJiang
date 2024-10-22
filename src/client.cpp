@@ -137,6 +137,11 @@ vector<string> list_request(int clientSock) {
         return {};
     }
 
+    if(combinedLength == 0) {
+        cout << "Nothing in Server" << endl;
+        return {};
+    }
+
     // Receive the combined string
     char buffer[combinedLength + 1];
     if (recv(clientSock, buffer, combinedLength, 0) <= 0) {
@@ -193,6 +198,13 @@ vector<string> diff_request(int clientSock) {
         }
     }
     closedir(dir);
+
+    if (req.fileCount == 0) {
+        combinedFiles = "dummy_file.txt\n";
+        hashes = "dummyhash\n";
+        req.fileCount = 1;
+    }
+
 
     uint32_t combinedLength = combinedFiles.size();
     uint32_t combinedLengthHashes = hashes.size();
@@ -284,6 +296,13 @@ void pull_request(int clientSock) {
         }
     }
     closedir(dir);
+
+    if (req.fileCount == 0) {
+        combinedFiles = "dummy_file.txt\n";
+        hashes = "dummyhash\n";
+        req.fileCount = 1;
+    }
+
 
     uint32_t combinedLength = combinedFiles.size();
     uint32_t combinedLengthHashes = hashes.size();
@@ -438,10 +457,13 @@ int main() {
 
         if (input == "LIST") {
             songs = list_request(client_socket);
-            cout << "Server Files: " << endl;
-            for (const string &song : songs) {
-                printf("%s\n", song.c_str());
+            if(songs.size() > 0) {
+                cout << "Server Files: " << endl;
+                for (const string &song : songs) {
+                    printf("%s\n", song.c_str());
+                }
             }
+
         }
         else if (input == "DIFF") {
             songs = diff_request(client_socket);

@@ -171,11 +171,14 @@ void list_songs(int client_socket) {
         return;
     }
 
-    // send the entire concatenated string in one go
-    if (send(client_socket, combinedFiles.c_str(), combinedLength, 0) < 0) {
+    if(combinedLength > 0) {
+        if (send(client_socket, combinedFiles.c_str(), combinedLength, 0) < 0) {
         perror("Failed to send combined string");
         return;
     }
+    }
+    // send the entire concatenated string in one go
+
 }
 
 void diff_songs(int client_sock) {
@@ -205,7 +208,7 @@ void diff_songs(int client_sock) {
         perror("Failed to receive combined string");
         return;
     }
-    //cout << "runs past here" << endl;
+    cout << "runs past here" << endl;
     buffer[combinedLength] = '\0';
 
     uint32_t combinedLengthHashes;
@@ -329,7 +332,7 @@ void send_file(int client_socket, const string& filepath) {
 
 void pull_songs(int client_sock) {
     PullResponse resp;
-    resp.header.type = DIFF;
+    resp.header.type = PULL;
     resp.fileCount = 0;
 
     // if (recv(clientSock, &resp.header, sizeof(resp.header), 0) <= 0) {
@@ -434,6 +437,9 @@ void pull_songs(int client_sock) {
         send_file(client_sock, files_to_send[i]);
         }
     }
+    else {
+        cout << "No files to send." << endl;
+    }
 }
 
 void *handle_client(void *client_socket) {
@@ -473,7 +479,7 @@ void *handle_client(void *client_socket) {
                 log_client_action(client_id, "Requested DIFF");
                 break;
             case PULL:
-                cout << "Server is currently processing LIST" << endl;
+                cout << "Server is currently processing PULL" << endl;
                 pull_songs(sock);
                 log_client_action(client_id, "Requested PULL");
                 break;
