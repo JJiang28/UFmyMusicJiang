@@ -13,7 +13,7 @@ This project implements a simple client-server application where clients can syn
     
 2.  **Create Directories**:
     
-    -   **Server Files Directory**: Create a directory named `server_files` in the same directory as your server executable. Populate this directory with the files you want the server to share.
+    -   **Server Files Directory**: Create a directory named `server_files` and `client history` in the same directory as your server executable. Populate this directory with the files you want the server to share.
     -   **Client Files Directory**: Create a directory named `client_files` in the same directory as your client executable. The client will use this directory to store synchronized files.
 
 ## Compiling the Project
