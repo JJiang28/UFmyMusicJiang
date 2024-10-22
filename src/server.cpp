@@ -395,7 +395,7 @@ void pull_songs(int client_sock) {
         return;
     }
 
-    cout << "me when i serve" << endl;
+    // cout << "me when i serve" << endl;
 
     if (send(client_sock, &resp.header, sizeof(resp.header), 0) < 0) {
         perror("Error: Sending file failed");

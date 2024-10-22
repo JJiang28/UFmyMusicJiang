@@ -70,7 +70,7 @@ void receiveFile(int clientSock, const string &filename, uint32_t filesize) {
     }
 
     fclose(file);
-    cout << "File received successfully!" << endl;
+    cout << "File " << filename << " received successfully!" << endl;
 }
 
 // helper function to receive a serialized string
@@ -196,8 +196,6 @@ vector<string> diff_request(int clientSock) {
 
     uint32_t combinedLength = combinedFiles.size();
     uint32_t combinedLengthHashes = hashes.size();
-    printf("Your files: \n%s", combinedFiles.c_str());
-    printf("Their hashes: \n%s", hashes.c_str());
 
     req.clientFiles = combinedFiles;
 
@@ -289,8 +287,6 @@ void pull_request(int clientSock) {
 
     uint32_t combinedLength = combinedFiles.size();
     uint32_t combinedLengthHashes = hashes.size();
-    printf("Your files: \n%s", combinedFiles.c_str());
-    printf("Their hashes: \n%s", hashes.c_str());
 
     req.files = combinedFiles;
 
@@ -312,15 +308,13 @@ void pull_request(int clientSock) {
         return;
     }
 
-    cout << "guys i sent it" << endl;
-
     PullResponse resp;
     if (recv(clientSock, &resp.header, sizeof(resp.header), 0) <= 0) {
         perror("Failed to receive diff header");
         return;
     }
 
-    cout << "got the header back" << endl;
+    // cout << "got the header back" << endl;
 
     uint32_t files_expected;
     if (recv(clientSock, &files_expected, sizeof(files_expected), 0) <= 0) {
@@ -335,7 +329,7 @@ void pull_request(int clientSock) {
     }
 
     // name, filesize, and content [8192 bytes]
-    cout << files_expected << endl;
+    // cout << files_expected << endl;
     for (uint32_t i = 0; i < files_expected; i++) {
         uint32_t recvLen;
         if (recv(clientSock, &recvLen, sizeof(recvLen), 0) <= 0) {
@@ -444,12 +438,14 @@ int main() {
 
         if (input == "LIST") {
             songs = list_request(client_socket);
+            cout << "Server Files: " << endl;
             for (const string &song : songs) {
                 printf("%s\n", song.c_str());
             }
         }
         else if (input == "DIFF") {
             songs = diff_request(client_socket);
+            cout << "Different Files: " << endl;
             for (const string &song : songs) {
                 printf("%s\n", song.c_str());
             }
