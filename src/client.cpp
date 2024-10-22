@@ -1,6 +1,7 @@
 #include <iostream>
 #include <iomanip>
 #include <stdio.h>
+#include <fstream> 
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -16,16 +17,73 @@ using namespace std;
 #define MAX_BUFFER 4096
 #define PORT 8080
 
-// Helper to receive a serialized string
+const int CHUNK_SIZE = 8192;
+
+void store_client_id(uint32_t client_id) {
+    ofstream idFile("client_id.txt"); // store client id
+    if (idFile.is_open()) { // input client_id into the txt
+        idFile << client_id;
+        idFile.close();
+    } else {
+        perror("Could not store client ID");
+    }
+}
+
+ 
+uint32_t load_client_id() {
+    ifstream idFile("client_id.txt");
+    uint32_t client_id = 0;
+    if (idFile.is_open()) {
+        idFile >> client_id; // put current id in
+        idFile.close();
+    }
+    return client_id;
+}
+
+// function to receive a file from the server and save it to 'client_files/' directory
+void receiveFile(int clientSock, const string &filename, uint32_t filesize) {
+    FILE *file = fopen(("client_files/" + filename).c_str(), "wb");
+    if (!file) {
+        perror("Failed to open file");
+        return;
+    }
+    uint32_t bytesReceived = 0;
+    char buffer[CHUNK_SIZE];
+
+    // continue receiving until the entire file is received, and for the last file, use remaining bytes since it typically won't be the same size
+    while (bytesReceived < filesize) {
+        uint32_t remaining = filesize - bytesReceived;
+        uint32_t chunkSize;
+        if (remaining < CHUNK_SIZE) {
+            chunkSize = remaining;
+        }
+        else {
+            chunkSize = CHUNK_SIZE;
+        }
+        int received = recv(clientSock, buffer, chunkSize, 0);
+        if (received <= 0) {
+            perror("Failed to receive file chunk");
+            break;
+        }
+        fwrite(buffer, 1, received, file);
+        bytesReceived += received;
+    }
+
+    fclose(file);
+    cout << "File received successfully!" << endl;
+}
+
+// helper function to receive a serialized string
 string recv_string(int socket) {
     uint32_t len;
-    recv(socket, &len, sizeof(len), 0);  // Receive the length
+    recv(socket, &len, sizeof(len), 0);
     char buffer[len + 1];
-    recv(socket, buffer, len, 0);  // Then receive the string
-    buffer[len] = '\0';  // Null-terminate the string
+    recv(socket, buffer, len, 0); 
+    buffer[len] = '\0'; 
     return string(buffer);
 }
 
+// function to hash a file using SHA-256 very poggers michael
 string hash_file (const string& path) {
     ifstream file("client_files/"+path, ios::binary);
     if (!file) {
@@ -38,15 +96,15 @@ string hash_file (const string& path) {
     char buffer[4096];
     while (file.good()) {
         file.read(buffer, sizeof(buffer));
-        SHA256_Update(&sha256, buffer, file.gcount());
+        SHA256_Update(&sha256, buffer, file.gcount()); // hash each chunk
     }
     unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_Final(hash, &sha256);
+    SHA256_Final(hash, &sha256); //make it final
 
     stringstream hex_hash;
     hex_hash << hex << setfill('0');
     for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-        hex_hash << hex << setw(2) << (int)hash[i];
+        hex_hash << hex << setw(2) << (int)hash[i]; // convert to hexa
     }
     return hex_hash.str();
 }
@@ -94,7 +152,8 @@ vector<string> list_request(int clientSock) {
         songs.push_back(combinedFiles.substr(0, pos));
         combinedFiles.erase(0, pos + 1);
     }
-
+    resp.fileCount = songs.size();
+    resp.files = songs;
     return songs;
 }
 
@@ -140,7 +199,9 @@ vector<string> diff_request(int clientSock) {
     printf("Your files: \n%s", combinedFiles.c_str());
     printf("Their hashes: \n%s", hashes.c_str());
 
-//    cout << "client: " << combinedLength << endl;
+    req.clientFiles = combinedFiles;
+
+    //cout << "client: " << combinedLength << endl;
     // Send buffer length and files to server
     if (send(clientSock, &combinedLength, sizeof(combinedLength), 0) < 0) {
         perror("Failed to send combined string length");
@@ -165,12 +226,19 @@ vector<string> diff_request(int clientSock) {
         return {};
     }
 
+    if (recvLen == 0) {
+        // No differences found
+        cout << "No differences found." << endl;
+        return {};
+    }
+
     char buffer[recvLen + 1];
     if (recv(clientSock, buffer, recvLen, 0) <= 0) {
         cout << "error is on client side" << endl;
         perror("Failed to receive combined string");
         return {};
     }
+   
     buffer[recvLen] = '\0';
 
     vector<string> songs;
@@ -189,7 +257,7 @@ void pull_request(int clientSock) {
     header.type = PULL;
     header.size = 0;
 
-    DiffRequest req;
+    PullRequest req;
     req.header = header;
     req.fileCount = 0;
 
@@ -223,6 +291,8 @@ void pull_request(int clientSock) {
     uint32_t combinedLengthHashes = hashes.size();
     printf("Your files: \n%s", combinedFiles.c_str());
     printf("Their hashes: \n%s", hashes.c_str());
+
+    req.files = combinedFiles;
 
     // Send buffer length and files to server
     if (send(clientSock, &combinedLength, sizeof(combinedLength), 0) < 0) {
@@ -258,27 +328,37 @@ void pull_request(int clientSock) {
         return;
     }
 
+    if (files_expected == 0) {
+        // No differences found
+        cout << "No files to pull." << endl;
+        return;
+    }
+
+    // name, filesize, and content [8192 bytes]
     cout << files_expected << endl;
     for (uint32_t i = 0; i < files_expected; i++) {
         uint32_t recvLen;
         if (recv(clientSock, &recvLen, sizeof(recvLen), 0) <= 0) {
-            perror("Failed to receive combined string length");
+            perror("Failed to receive filename length");
             return;
         }
 
         char buffer[recvLen + 1];
         if (recv(clientSock, buffer, recvLen, 0) <= 0) {
-            perror("Failed to receive combined string");
+            perror("Failed to receive filename");
             return;
         }
         buffer[recvLen] = '\0';
         string filename(buffer);
 
-        cout << filename << endl;
-    }
+        uint32_t filesize = 0; 
+        if (recv(clientSock, &filesize, sizeof(filesize), 0) <= 0) {
+            perror("Failed to receive filesize");
+            return;
+        }
 
-    // Print the list of files that are different
-    //printf("Different files:\n%s", diffBuffer);
+        receiveFile(clientSock, filename, filesize);
+    }
 }
 
 void leave_request(int clientSock) {
@@ -299,19 +379,16 @@ int main() {
     int client_socket;
     struct sockaddr_in server_addr;
 
-    // Create socket
     client_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socket < 0) {
         perror("Socket creation failed");
         exit(1);
     }
 
-    // Configure server address
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
     server_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-    // Connect to the server
     if (connect(client_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Connection failed");
         close(client_socket);
@@ -319,6 +396,44 @@ int main() {
     }
 
     printf("Connected to the server.\n");
+
+    uint32_t client_id = load_client_id();
+    if (send(client_socket, &client_id, sizeof(client_id), 0) < 0) {
+        perror("Failed to send client ID");
+        close(client_socket);
+        exit(1);
+    }
+
+    // Receive new client ID if assigned
+    if (client_id == 0) {
+        if (recv(client_socket, &client_id, sizeof(client_id), 0) <= 0) {
+            perror("Failed to receive new client ID");
+            close(client_socket);
+            exit(1);
+        }
+        store_client_id(client_id);
+    }
+
+    // Receive client history
+    uint32_t history_size;
+    if (recv(client_socket, &history_size, sizeof(history_size), 0) <= 0) {
+        perror("Failed to receive history size");
+        close(client_socket);
+        exit(1);
+    }
+
+    if (history_size > 0) {
+        char *history = new char[history_size + 1];
+        if (recv(client_socket, history, history_size, 0) <= 0) {
+            perror("Failed to receive history content");
+            delete[] history;
+            close(client_socket);
+            exit(1);
+        }
+        history[history_size] = '\0';
+        cout << "Your history:\n" << history << endl;
+        delete[] history;
+    }
 
     while (1) {
         string input;

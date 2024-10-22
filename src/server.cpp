@@ -10,12 +10,103 @@
 #include <sstream>
 #include <iomanip>
 #include <openssl/sha.h>
+#include <unordered_set>
 #include "messages.h"
 using namespace std;
 
 #define MAX_BUFFER 4096
 #define PORT 8080
 
+//https://www.geeksforgeeks.org/mutex-lock-for-linux-thread-synchronization/
+
+pthread_mutex_t client_id_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+uint32_t generate_new_client_id() {
+    pthread_mutex_lock(&client_id_mutex);
+
+    uint32_t last_client_id = 0;
+
+    // read the last assigned client ID from the file
+    ifstream infile("last_client_id.txt");
+    if (infile.is_open()) {
+        infile >> last_client_id;
+        infile.close();
+    }
+    last_client_id++;
+
+    ofstream outfile("last_client_id.txt");
+    if (outfile.is_open()) {
+        outfile << last_client_id;
+        outfile.close();
+    } else {
+        perror("Could not write to last_client_id.txt");
+    }
+
+    pthread_mutex_unlock(&client_id_mutex);
+
+    return last_client_id;
+}
+
+// logging client actions
+void log_client_action(uint32_t client_id, const string& action) {
+    // preventing race conditions
+    pthread_mutex_lock(&log_mutex);
+    ofstream log_file;
+    log_file.open("client_history/client_" + to_string(client_id) + ".log", ios_base::app);
+    if (log_file.is_open()) {
+        time_t now = time(0);
+        char* dt = ctime(&now);
+        log_file << "[" << dt << "] " << action << "\n"; // formatting is a little messed up, idk why the syntax seems fine :(
+        log_file.close();
+    } else {
+        perror("Could not open log file");
+    }
+    pthread_mutex_unlock(&log_mutex);
+}
+
+void send_client_history(int client_socket, uint32_t client_id) {
+    pthread_mutex_lock(&log_mutex);
+    ifstream log_file("client_history/client_" + to_string(client_id) + ".log");
+    if (log_file.is_open()) {
+        stringstream buffer;
+        buffer << log_file.rdbuf();
+        string history = buffer.str();
+        uint32_t history_size = history.size();
+
+        // send history size
+        if (send(client_socket, &history_size, sizeof(history_size), 0) < 0) {
+            perror("Failed to send history size");
+            pthread_mutex_unlock(&log_mutex);
+            return;
+        }
+
+        // send history content
+        if (send(client_socket, history.c_str(), history_size, 0) < 0) {
+            perror("Failed to send history content");
+            pthread_mutex_unlock(&log_mutex);
+            return;
+        }
+
+        log_file.close();
+    } else {
+        // No history available
+        uint32_t history_size = 0;
+        send(client_socket, &history_size, sizeof(history_size), 0);
+    }
+    pthread_mutex_unlock(&log_mutex);
+}
+
+
+void close_connection(int client_socket) {
+    if (close(client_socket) < 0) {
+        perror("Failed to close socket");
+    } else {
+        cout << "Socket closed successfully." << endl;
+    }
+}
+
+// copy of the stuff in client.cpp
 string hash_file (const string& path) {
     ifstream file("server_files/"+path, ios::binary);
     if (!file) {
@@ -49,7 +140,6 @@ void list_songs(int client_socket) {
 
     string combinedFiles;
 
-    // Open directory and read files
     DIR *dir = opendir("server_files");
     if (dir == NULL) {
         perror("Could not open directory");
@@ -59,7 +149,6 @@ void list_songs(int client_socket) {
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL && response.fileCount < 100) {
         if (entry->d_type == DT_REG) {
-            // Add each filename to the combined string with a delimiter
             string fileName = string(entry->d_name);
             //cout << fileName << endl;
             combinedFiles += string(entry->d_name) + "\n";
@@ -69,20 +158,19 @@ void list_songs(int client_socket) {
     }
     closedir(dir);
 
-    // Send Header
     if (send(client_socket, &response.header, sizeof(response.header), 0) < 0) {
         perror("Failed to send header");
         return;
     }
 
-    // Send the length of the combined string
+    // send the length of the combined string
     uint32_t combinedLength = combinedFiles.size();
     if (send(client_socket, &combinedLength, sizeof(combinedLength), 0) < 0) {
         perror("Failed to send combined string length");
         return;
     }
 
-    // Send the entire concatenated string in one go
+    // send the entire concatenated string in one go
     if (send(client_socket, combinedFiles.c_str(), combinedLength, 0) < 0) {
         perror("Failed to send combined string");
         return;
@@ -91,7 +179,7 @@ void list_songs(int client_socket) {
 
 void diff_songs(int client_sock) {
     cout << "runs diff songs first" << endl;
-    // Receive header
+
     DiffResponse resp;
     resp.header.type = DIFF;
     resp.diffCount = 0;
@@ -152,12 +240,7 @@ void diff_songs(int client_sock) {
         return;
     }
 
-    unordered_map<string, string> songContents;
-    unordered_map<string, int> songCount;
-    for(int i = 0; i < songs.size(); i++) {
-        songContents[songs[i]] = hashes[i];
-        songCount[songs[i]] += 1;
-    }
+    unordered_set<string> client_hashes(hashes.begin(), hashes.end());
 
     DIR *dir = opendir("server_files");
     if (dir == NULL) {
@@ -169,19 +252,10 @@ void diff_songs(int client_sock) {
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {
-            // Add each filename to the combined string with a delimiter
             string fileName = string(entry->d_name);
-            string hashes = hash_file(fileName);
-            if(songContents.find(fileName) != songContents.end()) {
-                if(songContents[fileName] == hashes) {
-                    continue;
-                }
-                else {
-                    combinedDiffFiles += fileName + "\n";
-                }
-            }
-            else {
-                //cout << "runs here man" << endl;
+            string server_hash = hash_file(fileName);
+            if (client_hashes.find(server_hash) == client_hashes.end()) {
+                // Client does not have this content
                 combinedDiffFiles += fileName + "\n";
             }
         }
@@ -194,45 +268,50 @@ void diff_songs(int client_sock) {
     // }
 
     uint32_t combinedLengthS = combinedDiffFiles.size();
+    resp.diffCount = combinedLengthS;
+    resp.diffFiles = combinedDiffFiles.c_str();
     if (send(client_sock, &combinedLengthS, sizeof(combinedLengthS), 0) < 0) {
         perror("Failed to send combined string length");
         return;
     }
-
-    if (send(client_sock, combinedDiffFiles.c_str(), combinedLengthS, 0) < 0) {
+    if(combinedLengthS > 0){
+        if (send(client_sock, combinedDiffFiles.c_str(), combinedLengthS, 0) < 0) {
         perror("Failed to send combined string");
         return;
+        }
     }
 }
 
 void send_file(int client_socket, const string& filepath) {
-    ifstream file("server_files/"+filepath, ios::binary);
+    ifstream file("server_files/" + filepath, ios::binary | ios::ate);
     if (!file.is_open()) {
         perror("Could not open file!");
+        return;
     }
 
     uint32_t filepath_len = filepath.size();
     if (send(client_socket, &filepath_len, sizeof(filepath_len), 0) < 0) {
-        perror("Failed to send combined string length");
+        perror("Failed to send filepath length");
+        file.close();
         return;
     }
 
     if (send(client_socket, filepath.c_str(), filepath_len, 0) < 0) {
-        perror("Failed to send combined string");
+        perror("Failed to send filepath");
+        file.close();
         return;
     }
 
-    // Get file size
-    streamsize file_size = file.tellg();
+    uint32_t file_size = file.tellg();
     file.seekg(0, ios::beg);
-    
+
     if (send(client_socket, &file_size, sizeof(file_size), 0) < 0) {
         perror("Could not send file size");
         file.close();
         return;
     }
 
-    // 8 kB packet size
+    // Send file content
     char buffer[8192];
     while (file.good()) {
         file.read(buffer, sizeof(buffer));
@@ -244,14 +323,13 @@ void send_file(int client_socket, const string& filepath) {
         }
     }
     file.close();
-
 }
 
+
 void pull_songs(int client_sock) {
-    // Receive header
-    DiffResponse resp;
-    resp.header.type = PULL;
-    resp.diffCount = 0;
+    PullResponse resp;
+    resp.header.type = DIFF;
+    resp.fileCount = 0;
 
     // if (recv(clientSock, &resp.header, sizeof(resp.header), 0) <= 0) {
     //     perror("Failed to receive header");
@@ -259,10 +337,13 @@ void pull_songs(int client_sock) {
     // }
     
     uint32_t combinedLength;
+    
     if (recv(client_sock, &combinedLength, sizeof(combinedLength), 0) <= 0) {
         perror("Failed to receive combined string length");
         return;
     }
+
+    //cout << "server: " << combinedLength << endl;
 
     char buffer[combinedLength + 1];
     if (recv(client_sock, buffer, combinedLength, 0) <= 0) {
@@ -270,6 +351,7 @@ void pull_songs(int client_sock) {
         perror("Failed to receive combined string");
         return;
     }
+    //cout << "runs past here" << endl;
     buffer[combinedLength] = '\0';
 
     uint32_t combinedLengthHashes;
@@ -305,12 +387,7 @@ void pull_songs(int client_sock) {
         return;
     }
 
-    unordered_map<string, string> songContents;
-    unordered_map<string, int> songCount;
-    for(int i = 0; i < songs.size(); i++) {
-        songContents[songs[i]] = hashes[i];
-        songCount[songs[i]] += 1;
-    }
+    unordered_set<string> client_hashes(hashes.begin(), hashes.end());
 
     DIR *dir = opendir("server_files");
     if (dir == NULL) {
@@ -320,7 +397,7 @@ void pull_songs(int client_sock) {
 
     cout << "me when i serve" << endl;
 
-    if (send(client_sock, &resp.header, sizeof(&resp.header), 0) < 0) {
+    if (send(client_sock, &resp.header, sizeof(resp.header), 0) < 0) {
         perror("Error: Sending file failed");
         return;
     }
@@ -333,21 +410,10 @@ void pull_songs(int client_sock) {
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {
             string fileName = string(entry->d_name);
-            string hashes = hash_file(fileName);
+            string server_hash = hash_file(fileName);
 
-            // if filename is found 
-            if(songContents.find(fileName) != songContents.end()) {
-                // but contents match
-                if(songContents[fileName] == hashes) {
-                    continue;
-                }
-                else {
-                    files_to_send.push_back(fileName);
-                }
-            }
-            // no file found, send to client
-            else {
-                cout << "runs here man" << endl;
+            if (client_hashes.find(server_hash) == client_hashes.end()) {
+                // client does not have this content
                 files_to_send.push_back(fileName);
             }
         }
@@ -356,13 +422,16 @@ void pull_songs(int client_sock) {
 
     // send client number of files to expect
     uint32_t numfiles = files_to_send.size();
+    resp.fileCount = numfiles;
+    resp.clientFiles = files_to_send;
     if (send(client_sock, &numfiles, sizeof(numfiles), 0) < 0) {
         perror("Failed to send number of files");
         return;
     }
-
-    for (uint32_t i = 0; i < numfiles; i++) {
+    if(numfiles > 0) {
+        for (uint32_t i = 0; i < numfiles; i++) {
         send_file(client_sock, files_to_send[i]);
+        }
     }
 }
 
@@ -371,33 +440,57 @@ void *handle_client(void *client_socket) {
     free(client_socket); 
     char buffer[MAX_BUFFER];
     int bytes_read;
+    uint32_t client_id;
+    if (recv(sock, &client_id, sizeof(client_id), 0) <= 0) {
+        perror("Failed to receive client ID");
+        close(sock);
+        pthread_exit(NULL);
+    }
+
+    if (client_id == 0) {
+        client_id = generate_new_client_id();
+        if (send(sock, &client_id, sizeof(client_id), 0) < 0) {
+            perror("Failed to send new client ID");
+            close(sock);
+            pthread_exit(NULL);
+        }
+    }
+
+    send_client_history(sock, client_id);
 
     while ((bytes_read = recv(sock, buffer, sizeof(buffer), 0)) > 0) {
-        Header* header = (Header*)buffer;  // Cast the received buffer to the Header structure
+        Header* header = (Header*)buffer;
         switch (header->type) {
             case LIST:
-                list_songs(sock);  // Handle LIST request
+                list_songs(sock);
+                log_client_action(client_id, "Requested LIST");
                 break;
             case DIFF:
                 cout << "runs here" << endl;
-                diff_songs(sock);  // Handle DIFF request (to be implemented)
+                diff_songs(sock);
+                log_client_action(client_id, "Requested DIFF");
                 break;
             case PULL:
                 pull_songs(sock);
+                log_client_action(client_id, "Requested PULL");
                 break;
             case LEAVE:
-                close(sock);
-                pthread_exit(NULL);  // Handle LEAVE request (exit thread)
+                close_connection(sock);
+                log_client_action(client_id, "Disconnected");
+                pthread_exit(NULL);
             default:
                 cout << "Unknown request type." << endl;
+                log_client_action(client_id, "Sent unknown request");
                 break;
         }
     }
 
     if (bytes_read == 0) {
         cout << "Client disconnected." << endl;
+        log_client_action(client_id, "Client disconnected");
     } else {
         perror("recv failed");
+        log_client_action(client_id, "Receive failed");
     }
 
     close(sock);

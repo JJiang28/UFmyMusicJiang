@@ -17,6 +17,7 @@ typedef enum {
 typedef struct {
     Type type;
     uint32_t size;
+    uint32_t client_id;
 } Header;
 
 // List request has no params
@@ -35,30 +36,28 @@ typedef struct {
 typedef struct {
     Header header;
     uint32_t fileCount;
-    vector<string> clientFiles;
+    string clientFiles;
 } DiffRequest;
 
 // Diff response includes list of files the client does NOT have
 typedef struct {
     Header header;
     uint32_t diffCount;
-    vector<string> diffFiles;
+    string diffFiles;
 } DiffResponse;
 
 // Pull request
 typedef struct {
     Header header;
     uint32_t fileCount;
-    vector<string> files;
+    string files;
 } PullRequest;
 
 // Each pull response sends a chunk of a requested file
 typedef struct {
     Header header;
-    char fileName[256];
-    uint32_t fileSize;
-    char data[1024];
-    uint32_t seqNumber;
+    uint32_t fileCount;
+    vector<string> clientFiles;
 } PullResponse;
 
 // Leave request has no params
