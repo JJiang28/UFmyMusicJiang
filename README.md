@@ -24,4 +24,5 @@ Use the provided `Makefile` to compile both the client and server programs. This
 ## Executing
 
 To start the server, run: ./server
+
 To start the client, run: ./client
