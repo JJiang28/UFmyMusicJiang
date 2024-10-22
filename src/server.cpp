@@ -57,6 +57,7 @@ void log_client_action(uint32_t client_id, const string& action) {
     if (log_file.is_open()) {
         time_t now = time(0);
         char* dt = ctime(&now);
+        dt[strlen(dt) - 1] = '\0'; // hehe fixed
         log_file << "[" << dt << "] " << action << "\n"; // formatting is a little messed up, idk why the syntax seems fine :(
         log_file.close();
     } else {
@@ -133,7 +134,7 @@ string hash_file (const string& path) {
 }
 
 void list_songs(int client_socket) {
-    cout << "runs list songs first" << endl;
+    //cout << "runs list songs first" << endl;
     ListResponse response;
     response.header.type = LIST;
     response.fileCount = 0;
@@ -178,7 +179,7 @@ void list_songs(int client_socket) {
 }
 
 void diff_songs(int client_sock) {
-    cout << "runs diff songs first" << endl;
+    //cout << "runs diff songs first" << endl;
 
     DiffResponse resp;
     resp.header.type = DIFF;
@@ -462,19 +463,22 @@ void *handle_client(void *client_socket) {
         Header* header = (Header*)buffer;
         switch (header->type) {
             case LIST:
+                cout << "Server is currently processing LIST" << endl;
                 list_songs(sock);
                 log_client_action(client_id, "Requested LIST");
                 break;
             case DIFF:
-                cout << "runs here" << endl;
+                cout << "Server is currently processing DIFF" << endl;
                 diff_songs(sock);
                 log_client_action(client_id, "Requested DIFF");
                 break;
             case PULL:
+                cout << "Server is currently processing LIST" << endl;
                 pull_songs(sock);
                 log_client_action(client_id, "Requested PULL");
                 break;
             case LEAVE:
+                cout << "Socket is closing" << endl;
                 close_connection(sock);
                 log_client_action(client_id, "Disconnected");
                 pthread_exit(NULL);

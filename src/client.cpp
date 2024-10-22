@@ -445,9 +445,11 @@ int main() {
         }
         else if (input == "DIFF") {
             songs = diff_request(client_socket);
-            cout << "Different Files: " << endl;
-            for (const string &song : songs) {
-                printf("%s\n", song.c_str());
+            if(songs.size() > 0){
+                cout << "Different Files: " << endl;
+                for (const string &song : songs) {
+                    printf("%s\n", song.c_str());
+                }
             }
         }
         else if (input == "PULL") {
